@@ -6,11 +6,17 @@
 - AVRO 스키마, Kafka 토픽, MySql 테이블 생성
 
 ```bash
-cd pipeline/01-infra
-docker-compose up -d 
+cd realtime-pipeline/02-infra
 
+# kafka admin 
+http://localhost:9000/
+
+# message create
 mvn clean package
 mvn exec:java
-# java -jar infra-1.0-SNAPSHOT-jar
+
+# kafka topic dataset1
+http://localhost:9000/topic/dataset1
+
 ```
 
