@@ -1,5 +1,5 @@
 
-# 서비스
+# 프로듀서
 
 ### 1. infra 세팅
 - Zookeeper, Kafka, Schema-Registry, MySQL 생성
