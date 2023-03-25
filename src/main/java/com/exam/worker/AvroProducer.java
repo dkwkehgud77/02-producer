@@ -4,56 +4,88 @@ import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.DescribeTopicsResult;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
+import java.util.Collections;
 import java.util.Properties;
 import java.util.Random;
+import java.util.ResourceBundle;
 
 public class AvroProducer {
-    private static final Logger logger = LoggerFactory.getLogger(AvroProducer.class);
+    private final ResourceBundle RESOURCE_BUNDLE = ResourceBundle.getBundle("config");
+    private final Logger logger = LoggerFactory.getLogger(AvroProducer.class);
 
-    private final String BOOTSTRAP_SERVERS = "localhost:9091,localhost:9092,localhost:9093";
-    private final String TOPIC = "test_topic";
-    private static final int MESSAGE_COUNT = 100;  // 생성할 메시지 수
-    private static final int PARTITION_COUNT = 3;  // 토픽 파티션 수
+    // Kafka Producer 설정
+    private final KafkaProducer<String, GenericRecord> producer;
+    private final AdminClient adminClient;
+
+    // Message 설정
+    private final int MESSAGE_COUNT_PER_TOPIC;  // 생성할 메시지 수
 
     private static final Random RANDOM = new Random();
-
-    private KafkaProducer<String, GenericRecord> producer;
 
     private static final String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
     public AvroProducer() {
+
+        // AdminClient 설정
         Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);
+        String bootstrapServers = RESOURCE_BUNDLE.getString("kafka.bootstrap.servers");
+        props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        this.adminClient = AdminClient.create(props);
+
+        // Producer 설정
+        props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class.getName());
-        props.put("schema.registry.url", "http://localhost:8081");
+        props.put("schema.registry.url", RESOURCE_BUNDLE.getString("kafka.schema.registry.url"));
+        this.producer = new KafkaProducer<>(props);
 
-        KafkaProducer<String, GenericRecord> producer = new KafkaProducer<>(props);
-        this.producer = producer;
+        // Message 설정
+        this.MESSAGE_COUNT_PER_TOPIC = Integer.parseInt(RESOURCE_BUNDLE.getString("message.count.per.topic"));
     }
 
     public void createMessages(int ThreadId, Schema schema) {
+
+        String topicName = schema.getName();
+        int partitionCount;
+        // AdminClient 를 통해 Topic 명으로 Partition 개수 를 구헙니다.
+        try {
+            DescribeTopicsResult describeTopicsResult = adminClient.describeTopics(Collections.singletonList(topicName));
+            partitionCount = describeTopicsResult.all().get().get(topicName).partitions().size();
+            if(partitionCount < 1)
+                throw new RuntimeException("topic partition is empty..");
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+
+        // Avro 스키마 포맷의 메시지를 Topic 당 정해진 개수만큼 생성합니다.
         try{
-            String topic = schema.getName();
-            for (int i = 0; i < MESSAGE_COUNT; i++) {
+            for (int i = 0; i < MESSAGE_COUNT_PER_TOPIC; i++) {
                 GenericRecord message = new GenericData.Record(schema);
+                // Field 타입에 따라 랜덤한 값을 생성하여 생산할 메시지를 만듭니다.
                 for(Schema.Field field : schema.getFields()){
                     message.put(field.name(), generateValue(field.schema()));
                 }
+                // 메시지의 Key 값에 따라 동일한 Partition 에 분배되어 들어가도록 partitionId를 구합니다. -> 해싱함수 사용
+                // 동일한 Key 의 데이터는 동일한 Partition 에 저장되어야 파티션 병렬 처리하여도 데이터의 순서가 보장됩니다.
                 String key = message.get(0).toString();
-                int partition = Math.abs(key.hashCode() % PARTITION_COUNT);
-                ProducerRecord<String, GenericRecord> producerRecord = new ProducerRecord<>(topic, partition, key, message);
+                int partitionId = Math.abs(key.hashCode() % partitionCount);
+                ProducerRecord<String, GenericRecord> producerRecord = new ProducerRecord<>(topicName, partitionId, key, message);
                 producer.send(producerRecord);
             }
-            System.out.println("Thread "+ ThreadId + " Kafka Producer messeage send successfully..." + topic);
+            logger.info(String.format("thread %s kafka producer messeage send successfully... %s", ThreadId, topicName));
 
+            // 메시지 생산 작업이 완료되면 프로듀서 객체를 종료합니다.
             producer.flush();
             producer.close();
 
@@ -63,6 +95,7 @@ public class AvroProducer {
     }
 
     private static Object generateValue(Schema fieldSchema) {
+        // Field 스키마 타입에 따라 랜덤한 값을 생성하여 반환합니다.
         switch (fieldSchema.getType()) {
             case INT:
                 return RANDOM.nextInt();
@@ -73,9 +106,6 @@ public class AvroProducer {
             case DOUBLE:
                 return RANDOM.nextDouble();
             case STRING:
-//                byte[] bytes = new byte[16];
-//                RANDOM.nextBytes(bytes);
-//                return new String(bytes);
                 StringBuilder builder = new StringBuilder();
                 for (int i = 0; i < 6; i++) {
                     int index = new Random().nextInt(CHARACTERS.length());
@@ -89,23 +119,5 @@ public class AvroProducer {
         }
     }
 
-//    public void createMessages(Schema avroSchema) {
-//        List<GenericRecord> messages = new ArrayList<>();
-//
-//        DatumWriter<GenericRecord> datumWriter = new SpecificDatumWriter<>(avroSchema);
-//        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-//        Encoder encoder = EncoderFactory.get().binaryEncoder(outputStream, null);
-//
-//        for (int i = 0; i < MESSAGE_COUNT; i++) {
-//            GenericRecord message = new GenericData.Record(schema);
-//            message.put("id", i);
-//            message.put("name", "Name_" + i);
-//            message.put("age", RANDOM.nextInt(100));
-//            datumWriter.write(message, encoder);
-//            encoder.flush();
-//            byte[] serializedMessage = outputStream.toByteArray();
-//            messages.add(deserializeMessage(serializedMessage, schema));
-//            outputStream.reset();
-//        }
-//    }
+
 }
