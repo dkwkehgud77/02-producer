@@ -13,6 +13,7 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.text.DecimalFormat;
 import java.util.Collections;
 import java.util.Properties;
 import java.util.Random;
@@ -56,7 +57,7 @@ public class AvroProducer {
     public void createMessages(int ThreadId, Schema schema) {
 
         String topicName = schema.getName();
-        int partitionCount;
+        int partitionCount = 0;
         // AdminClient 를 통해 Topic 명으로 Partition 개수 를 구헙니다.
         try {
             DescribeTopicsResult describeTopicsResult = adminClient.describeTopics(Collections.singletonList(topicName));
@@ -64,8 +65,7 @@ public class AvroProducer {
             if(partitionCount < 1)
                 throw new RuntimeException("topic partition is empty..");
         } catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException(e);
+            logger.error("Error occurred in Admin client", e);
         }
 
         // Avro 스키마 포맷의 메시지를 Topic 당 정해진 개수만큼 생성합니다.
@@ -90,7 +90,7 @@ public class AvroProducer {
             producer.close();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Error occurred in Producing messages", e);
         }
     }
 
@@ -98,21 +98,24 @@ public class AvroProducer {
         // Field 스키마 타입에 따라 랜덤한 값을 생성하여 반환합니다.
         switch (fieldSchema.getType()) {
             case INT:
-                return RANDOM.nextInt();
+                int integerValue = RANDOM.nextInt(100) + 1;
+                return integerValue;
             case LONG:
                 return System.currentTimeMillis();
             case FLOAT:
-                return RANDOM.nextFloat();
+                float floatValue = Float.parseFloat(new DecimalFormat("#.###").format(RANDOM.nextFloat()));
+                return floatValue;
             case DOUBLE:
-                return RANDOM.nextDouble();
+                double doubleValue = Double.parseDouble(new DecimalFormat("#.######").format(RANDOM.nextDouble()));
+                return doubleValue;
             case STRING:
-                StringBuilder builder = new StringBuilder();
+                StringBuilder stringValue = new StringBuilder();
                 for (int i = 0; i < 6; i++) {
                     int index = new Random().nextInt(CHARACTERS.length());
                     char ch = CHARACTERS.charAt(index);
-                    builder.append(ch);
+                    stringValue.append(ch);
                 }
-                return builder.toString();
+                return stringValue.toString();
 
             default:
                 throw new IllegalArgumentException("Unsupported type: " + fieldSchema.getType());
