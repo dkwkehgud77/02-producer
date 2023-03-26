@@ -1,19 +1,17 @@
 
 # Kafka Producer Application
 
-## Introduction
-이 프로젝트는 대량의 Avro 형식의 메시지를 분산 병렬 처리하는 Java 기반 Kafka Consumer 애플리케이션입니다.
-이 애플리케이션은 장애 복구 시에도 데이터 유실 없이 Exactly-Once Delivery를 보장합니다.
-또한, Backpressure 기능을 지원하여 Consumer가 메시지를 처리하는 속도를 제어할 수 있습니다.
+### Introduction
+이 프로젝트는 Avro 스키마를 기반으로 병렬로 대량의 메시지를 생산하는 애플리케이션입니다.
+Kafka 토픽의 다수 파티션과 멀티스레드를 활용하여 병렬로 메시지 생산하고 분산 저장합니다.
+메시지의 순서를 보장하기 위해 Key 값에 따라 동일한 파티션에 메시지를 생산하도록 합니다.
+이를 위해 Key 값을 해싱 처리하고 파티션 개수로 나누어 파티션 Id를 할당합니다.
 
-
-## Features
-### Kafka 대량의 메시지 분산 병렬 처리
-
-### 데이터 유실 없이 Exactly-Once Delivery 보장
-
-### Backpressure 기능으로 메시지 처리하는 속도 제어
-
+### Features
+- 멀티스레드를 활용하여 대량의 Avro 스키마 메시지를 병렬로 생산
+- Kafka 토픽의 다수 파티션을 통해 대량의 메시지를 분산 처리
+- 메시지 Key 값에 따라 동일한 파티션에 생산하여 순서를 보장
+- Avro 스키마 레지스트리를 활용한 메시지 시리얼라이즈
 
 # Getting Started
 ### Prerequisites
@@ -54,9 +52,14 @@ $ mvn clean compile exec:java
 [INFO] --- exec:3.0.0:java (default-cli) @ producer ---
 [Main.main()] INFO Main - kafka producer application start...
 
+# Kafka UI
+http://localhost:9000/topic/dataset1
+http://localhost:9000/topic/dataset2
+http://localhost:9000/topic/dataset3
+- 정상적으로 토픽의 파티션에 메시지가 잘 분배되어 들어갔는지 확인한다.
 ```
 
-### Application Deployment
+### Application Deploy
 1. properties 파일을 세팅합니다.
 2. Maven을 사용하여 프로젝트를 패키징합니다.
 3. Java를 사용하여 백그라운드로 Producer 애플리케이션을 실행합니다.
